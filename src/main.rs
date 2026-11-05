@@ -1,10 +1,8 @@
 use std::fs::{File, metadata};
 use std::io::{Read, Seek, SeekFrom};
 use std::os::unix::fs::MetadataExt;
-use std::thread::{self, Thread};
-
 // use axum::extract::path;
-use axum::http::{Request, header};
+// use axum::http::{Request, header};
 use axum::{
     Router,
     extract::Path,
@@ -15,13 +13,12 @@ use axum::{
 
 #[derive(Debug)]
 enum RequestRanges {
-    Range(u64, u64),
-    From(u64),
-    Last(u64),
-    None,
+    // (from, to, file_size)
+    Range(u64, u64, u64),
+    Invalid,
 }
 
-const FILE_PATH: &str = "/home/jayslen/Videos/Naruto.mp4";
+const FILE_PATH: &str = "/home/jayslen/Videos/video-faststart.mp4";
 #[tokio::main]
 async fn main() {
     let app = Router::new().route("/video/{id}", routing::get(handler));
@@ -30,108 +27,74 @@ async fn main() {
     axum::serve(listener, app).await.unwrap();
 }
 
-async fn handler(Path(id): Path<String>, header: HeaderMap) -> impl IntoResponse {
+async fn handler(Path(id): Path<String>, req_header: HeaderMap) -> impl IntoResponse {
     let file_metadata = metadata(FILE_PATH).unwrap();
     let mut f = File::open(FILE_PATH).unwrap();
 
-    let mut response_header = HeaderMap::new();
-    response_header.insert("Content-Type", HeaderValue::from_static("video/mp4"));
-    response_header.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
+    let mut res_header = HeaderMap::new();
+    res_header.insert("Content-Type", HeaderValue::from_static("video/mp4"));
+    res_header.insert("Accept-Ranges", HeaderValue::from_static("bytes"));
 
-    let range = parse_range(header.get("Range"));
+    let req_range = parse_range(req_header.get("Range"), file_metadata.size());
+
+    println!("Request Range: {:?}", req_range);
+
     let buff_size: u64;
     let mut buffer: Vec<u8> = Vec::new();
 
-    match range {
-        RequestRanges::Range(from, to) => {
-            buff_size = to - from;
-            buffer = vec![0u8; buff_size as usize];
+    match req_range {
+        RequestRanges::Range(from, to, length) => {
+            println!("From: {}, To: {}, Length: {}", from, to, length);
+            buffer = vec![0u8; length as usize];
+
             f.seek(SeekFrom::Start(from)).unwrap();
             f.read_exact(&mut buffer).unwrap();
-            response_header.insert(
+
+            res_header.insert(
                 "Content-Range",
                 HeaderValue::from_str(&format!("bytes {}-{}/{}", from, to, file_metadata.size()))
                     .unwrap(),
             );
 
-            response_header.insert(
+            res_header.insert(
                 "Content-Length",
-                HeaderValue::from_str(&format!("{}", buff_size)).unwrap(),
+                HeaderValue::from_str(&format!("{}", length)).unwrap(),
             );
 
-            return (StatusCode::PARTIAL_CONTENT, response_header, buffer);
+            return (StatusCode::PARTIAL_CONTENT, res_header, buffer);
         }
-        RequestRanges::From(from) => {
-            buff_size = file_metadata.size() - from;
-            buffer = vec![0u8; buff_size as usize];
-            f.seek(SeekFrom::Start(from)).unwrap();
-            f.read_exact(&mut buffer).unwrap();
-            response_header.insert(
-                "Content-Range",
-                HeaderValue::from_str(&format!("bytes {}-/{}", from, file_metadata.size()))
-                    .unwrap(),
-            );
-            response_header.insert(
-                "Content-Length",
-                HeaderValue::from_str(&format!("{}", buff_size)).unwrap(),
-            );
-
-            return (StatusCode::PARTIAL_CONTENT, response_header, buffer);
-        }
-        RequestRanges::Last(to) => {
-            buff_size = to;
-
-            buffer = vec![0u8; buff_size as usize];
-            f.seek(SeekFrom::End(-(to as i64))).unwrap();
-
-            response_header.insert(
-                "Content-Range",
-                HeaderValue::from_str(&format!("bytes -{}/{}", to, file_metadata.size())).unwrap(),
-            );
-            println!("Range last {}", to);
-
-            response_header.insert(
-                "Content-Length",
-                HeaderValue::from_str(&format!("{}", buff_size)).unwrap(),
-            );
-
-            f.read_exact(&mut buffer).unwrap();
-
-            return (StatusCode::PARTIAL_CONTENT, response_header, buffer);
-        }
-        RequestRanges::None => {
-            f.read_to_end(&mut buffer).unwrap();
-
-            response_header.insert(
-                "Content-Length",
-                HeaderValue::from_str(&format!("{}", file_metadata.size())).unwrap(),
-            );
-            return (StatusCode::OK, response_header, buffer);
+        RequestRanges::Invalid => {
+            return (StatusCode::RANGE_NOT_SATISFIABLE, res_header, buffer);
         }
     }
 }
 
-fn parse_range(raw_range: Option<&HeaderValue>) -> RequestRanges {
+fn parse_range(raw_range: Option<&HeaderValue>, req_file_size: u64) -> RequestRanges {
     match raw_range {
         Some(value) => {
-            let range: Vec<&str> = (value.to_str().unwrap().split("=").collect::<Vec<&str>>()[0])
-                .split("bytes")
-                .collect();
+            let mut range_parse: Vec<i64> =
+                value.to_str().unwrap().split("=").collect::<Vec<&str>>()[1]
+                    .split("-")
+                    .map(|f| f.parse::<i64>().unwrap_or(-1))
+                    .collect();
 
-            if range[0].len() > 0 && range[1].len() > 0 {
-                let from = range[0].parse::<u64>().unwrap();
-                let to = range[1].parse::<u64>().unwrap();
-                return RequestRanges::Range(from, to);
-            } else if range[0].len() > 0 {
-                let from = range[0].parse::<u64>().unwrap();
-                return RequestRanges::From(from);
-            } else if range[1].len() > 0 {
-                let to = range[1].parse::<u64>().unwrap();
-                return RequestRanges::Last(to);
-            } else {
-                return RequestRanges::None;
+            if range_parse[0] < 0 {
+                range_parse[0] = req_file_size as i64 - range_parse[1];
+                range_parse[1] = req_file_size as i64 - 1;
             }
+
+            if range_parse[1] < 0 {
+                range_parse[1] = req_file_size as i64 - 1;
+            }
+
+            let content_length = (range_parse[1] - range_parse[0]) + 1;
+
+            RequestRanges::Range(
+                range_parse[0] as u64,
+                range_parse[1] as u64,
+                content_length as u64,
+            )
         }
-        None => RequestRanges::None,
+        _ => RequestRanges::Invalid,
     }
 }
