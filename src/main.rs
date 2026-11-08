@@ -1,8 +1,6 @@
 use std::fs::{File, metadata};
 use std::io::{Read, Seek, SeekFrom};
-use std::os::unix::fs::MetadataExt;
-// use axum::extract::path;
-// use axum::http::{Request, header};
+
 use axum::{
     Router,
     extract::Path,
@@ -10,10 +8,11 @@ use axum::{
     response::IntoResponse,
     routing,
 };
+use std::os::unix::fs::MetadataExt;
+use std::str::FromStr;
 
 #[derive(Debug)]
-enum RequestRanges {
-    // (from, to, file_size)
+enum RequestRange {
     Range(u64, u64, u64),
     Invalid,
 }
@@ -39,11 +38,10 @@ async fn handler(Path(id): Path<String>, req_header: HeaderMap) -> impl IntoResp
 
     println!("Request Range: {:?}", req_range);
 
-    let buff_size: u64;
     let mut buffer: Vec<u8> = Vec::new();
 
     match req_range {
-        RequestRanges::Range(from, to, length) => {
+        RequestRange::Range(from, to, length) => {
             println!("From: {}, To: {}, Length: {}", from, to, length);
             buffer = vec![0u8; length as usize];
 
@@ -63,20 +61,32 @@ async fn handler(Path(id): Path<String>, req_header: HeaderMap) -> impl IntoResp
 
             return (StatusCode::PARTIAL_CONTENT, res_header, buffer);
         }
-        RequestRanges::Invalid => {
+        RequestRange::Invalid => {
             return (StatusCode::RANGE_NOT_SATISFIABLE, res_header, buffer);
         }
     }
 }
 
-fn parse_range(raw_range: Option<&HeaderValue>, req_file_size: u64) -> RequestRanges {
+fn parse_range(raw_range: Option<&HeaderValue>, req_file_size: u64) -> RequestRange {
     match raw_range {
         Some(value) => {
             let mut range_parse: Vec<i64> =
                 value.to_str().unwrap().split("=").collect::<Vec<&str>>()[1]
                     .split("-")
-                    .map(|f| f.parse::<i64>().unwrap_or(-1))
+                    .map(|f| {
+                        return match f64::from_str(f) {
+                            Ok(v) => v as i64,
+                            Err(_) => {
+                                // -1 is for empty string, -2 is for invalid range
+                                if f.trim().is_empty() { -1 } else { -2 }
+                            }
+                        };
+                    })
                     .collect();
+
+            if range_parse.contains(&-2) {
+                return RequestRange::Invalid;
+            }
 
             if range_parse[0] < 0 {
                 range_parse[0] = req_file_size as i64 - range_parse[1];
@@ -89,12 +99,12 @@ fn parse_range(raw_range: Option<&HeaderValue>, req_file_size: u64) -> RequestRa
 
             let content_length = (range_parse[1] - range_parse[0]) + 1;
 
-            RequestRanges::Range(
+            RequestRange::Range(
                 range_parse[0] as u64,
                 range_parse[1] as u64,
                 content_length as u64,
             )
         }
-        _ => RequestRanges::Invalid,
+        _ => RequestRange::Invalid,
     }
 }
