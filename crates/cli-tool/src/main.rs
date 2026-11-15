@@ -1,8 +1,10 @@
 use clap::{Parser, Subcommand, ValueEnum};
 use dialoguer::{Confirm, Input};
 use serde::Deserialize;
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
+use uuid::Uuid;
 
+mod filesystem;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 struct Cli {
@@ -12,7 +14,7 @@ struct Cli {
 
     // Media type arg (movie or series)
     #[arg(value_enum)]
-    media_type: Media,
+    media_type: MediaType,
 
     #[arg(short = 'i', long, help = "The IMDB ID of the media")]
     media_id: Option<String>,
@@ -22,6 +24,9 @@ struct Cli {
 
     #[arg(short = 'p', long = "posters")]
     poster_img_dir: Option<PathBuf>,
+
+    #[arg(short = 'm', long = "media")]
+    media_path: Option<PathBuf>,
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
@@ -32,7 +37,7 @@ enum Actions {
 }
 
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
-enum Media {
+enum MediaType {
     Movie,
     Series,
 }
@@ -85,6 +90,31 @@ struct Rating {
     value: String,
 }
 
+struct MediaEntry {
+    uuid: Uuid,
+    poster_path: PathBuf,
+    cover_path: PathBuf,
+    media_type: MediaType,
+    media_path: PathBuf,
+}
+
+impl MediaEntry {
+    fn new(
+        poster_path: PathBuf,
+        cover_path: PathBuf,
+        media_type: MediaType,
+        media_path: PathBuf,
+    ) -> Self {
+        Self {
+            poster_path,
+            cover_path,
+            media_type,
+            media_path,
+            uuid: Uuid::new_v4(),
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
 
@@ -99,38 +129,48 @@ fn main() {
                     .unwrap()
             };
 
-            let mut selected_media: BodyResponse;
+            let mut selected_media: Option<BodyResponse> = None;
 
-            loop {
-                if let Ok(media_response) = get_media_result(&media_name) {
-                    let confirm = Confirm::new()
-                        .with_prompt(format!(
-                            "Is this the correct title: {} ({}), {}",
-                            media_response.title, media_response.year, media_response.actors
-                        ))
-                        .interact()
-                        .unwrap();
-
+            while match get_media_result(&media_name) {
+                Ok(media_response) => {
+                    let confirm = true;
                     if confirm {
                         println!(
                             "Media confirmed: {} ({})",
                             media_response.title, media_response.year
                         );
-                        break;
+                        selected_media = Some(media_response);
+                        false // Exit
                     } else {
                         media_name = Input::new()
                             .with_prompt("Enter the IMDB ID of the media")
                             .interact_text()
                             .unwrap();
+                        true // Continue
                     }
-                } else {
-                    println!("Media not found.");
-                    break;
                 }
-            }
+                Err(_) => {
+                    println!("Media not found.");
+                    media_name = Input::new()
+                        .with_prompt("Enter the IMDB ID of the media")
+                        .interact_text()
+                        .unwrap();
+                    true // Continue the loop
+                }
+            } {}
 
-            // println!("Adding a movie... {}", media_name);
-            // Call the function to add a movie
+            let covers_dir = get_path_value(cli.cover_img_dir, "covers directory");
+            let posters_dir = get_path_value(cli.poster_img_dir, "posters directory");
+            let media_path = get_path_value(cli.media_path, "media file");
+
+            let media_entry = MediaEntry::new(posters_dir, covers_dir, cli.media_type, media_path);
+
+            let v = filesystem::add_media(
+                &media_entry,
+                &selected_media.expect("Media details should be available at this point"),
+            );
+
+            println!("Media added successfully: {:?}", v);
         }
         Actions::Mod => {
             println!("Modifying a movie...");
@@ -138,6 +178,32 @@ fn main() {
         Actions::Del => {
             println!("Deleting a movie...");
         }
+    }
+}
+
+// Helper to get value interactive in case is not present
+fn get_path_value(path: Option<PathBuf>, path_msg: &str) -> PathBuf {
+    match path {
+        Some(p) => p.clone(),
+        None => loop {
+            let input = Input::<String>::new()
+                .with_prompt(format!("Enter the path to the {}", path_msg))
+                .interact_text()
+                .unwrap();
+
+            match fs::exists(&input) {
+                Ok(exists) => {
+                    if exists {
+                        return PathBuf::from(input);
+                    } else {
+                        println!("The path does not exist. Please try again.");
+                    }
+                }
+                Err(e) => {
+                    println!("Error checking the path: {}. Please try again.", e);
+                }
+            }
+        },
     }
 }
 
@@ -161,9 +227,10 @@ fn get_media_result(title: &String) -> Result<BodyResponse, Box<dyn std::error::
 fn confirm_media(media_response: &BodyResponse) -> bool {
     let confirm = Confirm::new()
         .with_prompt(format!(
-            "Is this the correct title: {} ({}), {}",
-            media_response.title, media_response.year, media_response.actors
+            "{} ({}) - Confirm?",
+            media_response.title, media_response.year
         ))
+        .default(true)
         .interact()
         .unwrap();
 
