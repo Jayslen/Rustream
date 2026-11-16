@@ -14,13 +14,22 @@ const MEDIA_PATH: &str = "/mnt/external-drive/streaming-service";
 pub struct MediaAsset {
     pub id: Uuid,
     pub path: PathBuf,
-    asset_type: AssetType,
+    pub(crate) asset_type: AssetType,
 }
 
 #[derive(Debug)]
-enum AssetType {
+pub(crate) enum AssetType {
     Poster,
     Cover,
+}
+
+impl AssetType {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Poster => "poster",
+            Self::Cover => "cover",
+        }
+    }
 }
 
 pub fn add_media(

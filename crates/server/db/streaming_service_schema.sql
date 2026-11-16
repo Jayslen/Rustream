@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS titles (
     title TEXT NOT NULL,
     original_title TEXT,
     description TEXT,
+    plot TEXT,
     release_year INTEGER,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -38,6 +39,62 @@ CREATE TABLE IF NOT EXISTS titles (
         release_year IS NULL
         OR release_year BETWEEN 1800 AND 2100
     )
+);
+
+-- =========================================================
+-- GENRES
+-- Reusable genres assigned to movies and series.
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS genres (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS title_genres (
+    title_id TEXT NOT NULL,
+    genre_id TEXT NOT NULL,
+    position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+
+    PRIMARY KEY (title_id, genre_id),
+
+    FOREIGN KEY (title_id)
+        REFERENCES titles(id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (genre_id)
+        REFERENCES genres(id)
+        ON DELETE CASCADE
+);
+
+-- =========================================================
+-- PEOPLE AND CREDITS
+-- People are reusable; a title can have multiple credits by role.
+-- credit_type: director | writer | actor
+-- =========================================================
+
+CREATE TABLE IF NOT EXISTS people (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS title_credits (
+    title_id TEXT NOT NULL,
+    person_id TEXT NOT NULL,
+    credit_type TEXT NOT NULL CHECK (
+        credit_type IN ('director', 'writer', 'actor')
+    ),
+    position INTEGER NOT NULL DEFAULT 0 CHECK (position >= 0),
+
+    PRIMARY KEY (title_id, person_id, credit_type),
+
+    FOREIGN KEY (title_id)
+        REFERENCES titles(id)
+        ON DELETE CASCADE,
+
+    FOREIGN KEY (person_id)
+        REFERENCES people(id)
+        ON DELETE CASCADE
 );
 
 -- =========================================================
@@ -179,6 +236,15 @@ CREATE INDEX IF NOT EXISTS idx_titles_type
 
 CREATE INDEX IF NOT EXISTS idx_titles_title
     ON titles(title);
+
+CREATE INDEX IF NOT EXISTS idx_title_genres_genre
+    ON title_genres(genre_id, position);
+
+CREATE INDEX IF NOT EXISTS idx_title_credits_title
+    ON title_credits(title_id, credit_type, position);
+
+CREATE INDEX IF NOT EXISTS idx_title_credits_person
+    ON title_credits(person_id, credit_type);
 
 CREATE INDEX IF NOT EXISTS idx_title_images_title
     ON title_images(title_id, image_type, position);

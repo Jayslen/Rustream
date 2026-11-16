@@ -1,9 +1,10 @@
-use clap::{Parser, Subcommand, ValueEnum};
+use clap::{Parser, ValueEnum};
 use dialoguer::{Confirm, Input};
 use serde::Deserialize;
 use std::{fs, path::PathBuf};
 use uuid::Uuid;
 
+mod database;
 mod filesystem;
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -165,12 +166,15 @@ fn main() {
 
             let media_entry = MediaEntry::new(posters_dir, covers_dir, cli.media_type, media_path);
 
-            let v = filesystem::add_media(
-                &media_entry,
-                &selected_media.expect("Media details should be available at this point"),
-            );
+            let media_details =
+                selected_media.expect("Media details should be available at this point");
+            let assets = filesystem::add_media(&media_entry, &media_details)
+                .expect("Could not add media files to the filesystem");
 
-            println!("Media added successfully: {:?}", v);
+            database::add_media(&media_entry, &media_details, &assets)
+                .expect("Could not add media metadata to the database");
+
+            println!("Media added successfully: {:?}", assets);
         }
         Actions::Mod => {
             println!("Modifying a movie...");
