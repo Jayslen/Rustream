@@ -1,6 +1,6 @@
-use crate::actions::helpers::confirm_media;
-use crate::types::{BodyResponse, Cli, MediaEntry};
-use crate::{database, filesystem};
+use crate::actions::helpers::prepare_assets;
+use crate::filesystem;
+use crate::types::{BodyResponse, Cli, MediaAsset, MediaEntry};
 use dialoguer::Input;
 
 mod helpers;
@@ -45,18 +45,34 @@ pub fn add(cli: &Cli) {
         }
     } {}
 
-    let covers_dir = helpers::get_path_value(&cli.cover_img_dir, "covers directory");
-    let posters_dir = helpers::get_path_value(&cli.poster_img_dir, "posters directory");
-    let media_path = helpers::get_path_value(&cli.media_path, "media file");
+    let assets: Vec<MediaAsset>;
 
-    let media_entry = MediaEntry::new(posters_dir, covers_dir, cli.media_type, media_path);
+    {
+        let covers_dir = helpers::get_path_value(&cli.cover_img_dir, "covers directory");
+        let posters_dir = helpers::get_path_value(&cli.poster_img_dir, "posters directory");
+
+        assets = prepare_assets(
+            [&posters_dir, &covers_dir],
+            &selected_media
+                .as_ref()
+                .expect("Media details should be available at this point")
+                .title
+                .replace(' ', "-")
+                .to_lowercase(),
+        )
+        .unwrap();
+    }
+
+    let media_path = helpers::get_path_value(&cli.media_path, "media file");
+    let media_entry = MediaEntry::new(cli.media_type, media_path);
 
     let media_details = selected_media.expect("Media details should be available at this point");
-    let assets = filesystem::add_media(&media_entry, &media_details)
+
+    filesystem::add_media(&media_entry, &media_details, &assets)
         .expect("Could not add media files to the filesystem");
 
-    database::add_media(&media_entry, &media_details, &assets)
-        .expect("Could not add media metadata to the database");
-
-    println!("Media added successfully: {:?}", assets);
+    //     database::add_media(&media_entry, &media_details, &assets)
+    //         .expect("Could not add media metadata to the database");
+    //
+    // println!("Media added successfully: {:?}", assets);
 }

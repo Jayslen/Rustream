@@ -89,25 +89,39 @@ pub struct BodyResponse {
 
 pub struct MediaEntry {
     pub uuid: Uuid,
-    pub poster_path: PathBuf,
-    pub cover_path: PathBuf,
     pub media_type: MediaType,
     pub media_path: PathBuf,
 }
 
 impl MediaEntry {
-    pub fn new(
-        poster_path: PathBuf,
-        cover_path: PathBuf,
-        media_type: MediaType,
-        media_path: PathBuf,
-    ) -> Self {
+    pub fn new(media_type: MediaType, media_path: PathBuf) -> Self {
         Self {
-            poster_path,
-            cover_path,
             media_type,
             media_path,
             uuid: Uuid::new_v4(),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct MediaAsset {
+    pub id: Uuid,
+    pub filename: String,
+    pub source_path: PathBuf,
+    pub(crate) asset_type: AssetType,
+}
+
+#[derive(Debug)]
+pub(crate) enum AssetType {
+    Poster,
+    Cover,
+}
+
+impl AssetType {
+    pub(crate) fn as_str(&self) -> &'static str {
+        match self {
+            Self::Poster => "poster",
+            Self::Cover => "cover",
         }
     }
 }
