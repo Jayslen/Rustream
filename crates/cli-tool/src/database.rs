@@ -1,4 +1,5 @@
-use crate::{BodyResponse, MediaEntry, filesystem::MediaAsset};
+use crate::filesystem::MediaAsset;
+use crate::types::{BodyResponse, MediaEntry, MediaType};
 use rusqlite::{Connection, Transaction, params};
 use std::{env, error::Error, fs, path::Path};
 use uuid::Uuid;
@@ -11,7 +12,7 @@ pub fn add_media(
     details: &BodyResponse,
     assets: &[MediaAsset],
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
-    if !matches!(media.media_type, crate::MediaType::Movie) {
+    if !matches!(media.media_type, MediaType::Movie) {
         return Err("only movies are supported by the database add operation".into());
     }
 
