@@ -3,6 +3,8 @@ use serde::Deserialize;
 use std::path::PathBuf;
 use uuid::Uuid;
 
+use crate::actions::STORAGE_PATH;
+
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
 pub struct Cli {
@@ -93,6 +95,7 @@ pub struct MediaEntry {
     pub file_name: String,
     pub media_type: MediaType,
     pub source_path: PathBuf,
+    pub destination_path: PathBuf,
 }
 
 impl MediaEntry {
@@ -102,11 +105,17 @@ impl MediaEntry {
         let slug = media_title.replace(' ', "-").to_lowercase();
 
         let media_name = format!("{slug}-{uuid_prefix}");
+
+        let destination_path = match media_type {
+            MediaType::Movie => PathBuf::from(format!("{STORAGE_PATH}/media/movies/{media_name}")),
+            MediaType::Series => PathBuf::from(format!("{STORAGE_PATH}/media/series/{media_name}")),
+        };
         Self {
             media_type,
             source_path,
             file_name: media_name,
             uuid: Uuid::new_v4(),
+            destination_path,
         }
     }
 }

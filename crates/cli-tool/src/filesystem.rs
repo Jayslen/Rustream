@@ -5,28 +5,21 @@ use std::{
     thread,
 };
 
-const MEDIA_PATH: &str = "/mnt/external-drive/streaming-service";
+use crate::actions::STORAGE_PATH;
 
 pub fn add_media(
     media: &MediaEntry,
     media_assets: &[MediaAsset],
 ) -> Result<(), Box<dyn std::error::Error>> {
     // SEGMENT Series and Movies
-    let root = Path::new(MEDIA_PATH);
+    let root = Path::new(STORAGE_PATH);
 
     let movie_dir = root.join("media/movies");
     let assets_dir = root.join("assets/movies").join(&media.file_name);
 
     let movie_source = media.source_path.clone();
 
-    let movie_destination = movie_dir.join(format!(
-        "{}.{}",
-        media.file_name,
-        movie_source
-            .extension()
-            .and_then(|ext| ext.to_str())
-            .unwrap_or("mkv")
-    ));
+    let movie_destination = media.destination_path.clone();
 
     let poster_destination = assets_dir.join("posters");
     let cover_destination = assets_dir.join("covers");

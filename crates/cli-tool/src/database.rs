@@ -1,5 +1,4 @@
-use crate::filesystem::MediaAsset;
-use crate::types::{BodyResponse, MediaEntry, MediaType};
+use crate::types::{BodyResponse, MediaAsset, MediaEntry, MediaType};
 use rusqlite::{Connection, Transaction, params};
 use std::{env, error::Error, fs, path::Path};
 use uuid::Uuid;
@@ -40,15 +39,15 @@ fn add_movie(
     let title_id = media.uuid.to_string();
     let media_file_id = Uuid::new_v4().to_string();
     let release_year = parse_year(&details.year);
-    let media_path = media.media_path.to_string_lossy().into_owned();
+    let media_path = media.destination_path.to_string_lossy().into_owned();
     let file_name = media
-        .media_path
+        .destination_path
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or_default();
-    let file_size = fs::metadata(&media.media_path)?.len();
+    let file_size = fs::metadata(&media.destination_path)?.len();
     let container = media
-        .media_path
+        .destination_path
         .extension()
         .and_then(|extension| extension.to_str());
 
@@ -64,6 +63,11 @@ fn add_movie(
         "INSERT INTO movies (title_id, media_file_id) VALUES (?1, ?2)",
         params![title_id, media_file_id],
     )?;
+
+    // Future implementation
+    fn add_title() {
+        // If title exists return the uuid. This is for convenience when adding a series
+    }
 
     insert_genres(&transaction, &title_id, &details.genre)?;
     insert_credits(&transaction, &title_id, "director", &details.director)?;
@@ -144,8 +148,8 @@ fn insert_assets(
             "INSERT INTO images (id, path, mime_type) VALUES (?1, ?2, ?3)",
             params![
                 image_id,
-                asset.path.to_string_lossy(),
-                mime_type(&asset.path)
+                asset.source_path.to_string_lossy(),
+                mime_type(&asset.source_path)
             ],
         )?;
         transaction.execute(

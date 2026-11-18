@@ -1,9 +1,11 @@
 use crate::actions::helpers::prepare_assets;
-use crate::filesystem;
 use crate::types::{BodyResponse, Cli, MediaAsset, MediaEntry};
+use crate::{database, filesystem};
 use dialoguer::Input;
 
 mod helpers;
+
+pub const STORAGE_PATH: &str = "/mnt/external-drive/streaming-service";
 
 pub fn add(cli: &Cli) {
     let mut media_name = if let Some(media_id) = &cli.media_id {
@@ -49,6 +51,8 @@ pub fn add(cli: &Cli) {
 
     let assets: Vec<MediaAsset>;
 
+    // Get assets ready with path and filename formated to be stored in the assets directory
+    // scope it to drop the variables after this block
     {
         let covers_dir = helpers::get_path_value(&cli.cover_img_dir, "covers directory");
         let posters_dir = helpers::get_path_value(&cli.poster_img_dir, "posters directory");
@@ -61,14 +65,15 @@ pub fn add(cli: &Cli) {
     }
 
     let media_path = helpers::get_path_value(&cli.media_path, "media file");
+
+    // Prepare the media entry basic information to be used in the filesystem and database operations
     let media_entry = MediaEntry::new(cli.media_type, media_path, &media_details.title);
 
-    println!("{:#?}", media_entry);
     filesystem::add_media(&media_entry, &assets)
         .expect("Could not copy media and assets to the destination directories");
 
-    //     database::add_media(&media_entry, &media_details, &assets)
-    //         .expect("Could not add media metadata to the database");
-    //
+    database::add_media(&media_entry, &media_details, &assets)
+        .expect("Could not add media metadata to the database");
+
     // println!("Media added successfully: {:?}", assets);
 }
