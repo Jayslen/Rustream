@@ -34,7 +34,7 @@ pub enum Actions {
     Del,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum)]
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, ValueEnum, Debug)]
 pub enum MediaType {
     Movie,
     Series,
@@ -87,17 +87,25 @@ pub struct BodyResponse {
 //     value: String,
 // }
 
+#[derive(Debug)]
 pub struct MediaEntry {
     pub uuid: Uuid,
+    pub file_name: String,
     pub media_type: MediaType,
-    pub media_path: PathBuf,
+    pub source_path: PathBuf,
 }
 
 impl MediaEntry {
-    pub fn new(media_type: MediaType, media_path: PathBuf) -> Self {
+    pub fn new(media_type: MediaType, source_path: PathBuf, media_title: &String) -> Self {
+        let uuid = Uuid::new_v4();
+        let uuid_prefix = uuid.simple().to_string()[..8].to_string();
+        let slug = media_title.replace(' ', "-").to_lowercase();
+
+        let media_name = format!("{slug}-{uuid_prefix}");
         Self {
             media_type,
-            media_path,
+            source_path,
+            file_name: media_name,
             uuid: Uuid::new_v4(),
         }
     }

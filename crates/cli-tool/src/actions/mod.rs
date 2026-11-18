@@ -45,6 +45,8 @@ pub fn add(cli: &Cli) {
         }
     } {}
 
+    let media_details = selected_media.expect("Media details should be available at this point");
+
     let assets: Vec<MediaAsset>;
 
     {
@@ -53,23 +55,17 @@ pub fn add(cli: &Cli) {
 
         assets = prepare_assets(
             [&posters_dir, &covers_dir],
-            &selected_media
-                .as_ref()
-                .expect("Media details should be available at this point")
-                .title
-                .replace(' ', "-")
-                .to_lowercase(),
+            &media_details.title.replace(' ', "-").to_lowercase(),
         )
         .unwrap();
     }
 
     let media_path = helpers::get_path_value(&cli.media_path, "media file");
-    let media_entry = MediaEntry::new(cli.media_type, media_path);
+    let media_entry = MediaEntry::new(cli.media_type, media_path, &media_details.title);
 
-    let media_details = selected_media.expect("Media details should be available at this point");
-
-    filesystem::add_media(&media_entry, &media_details, &assets)
-        .expect("Could not add media files to the filesystem");
+    println!("{:#?}", media_entry);
+    filesystem::add_media(&media_entry, &assets)
+        .expect("Could not copy media and assets to the destination directories");
 
     //     database::add_media(&media_entry, &media_details, &assets)
     //         .expect("Could not add media metadata to the database");
